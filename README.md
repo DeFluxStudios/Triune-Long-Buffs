@@ -2,9 +2,20 @@
 
 An optional buff-roster plugin for [Triune AutoCombat (TAC)](https://github.com/gennro/TriuneAutocombat), for MacroQuest and the Project Triune EverQuest server.
 
-The plugin discovers eligible scribed class spells and trained class AAs across a character's three classes, proposes up to 15 starting roster entries, and lets the user review and edit the roster. Automatic casting is separately opt-in and uses TAC's downtime-buffing path.
+The plugin discovers eligible scribed class spells and trained class AAs across a character's three classes, recommends a starting roster (15 buffs by default, up to 40), and lets the user review and edit it. It keeps those buffs up on the character and the group, forces a short rebuff break so TAC does not keep pulling, and has a standalone mode.
 
-> **Pre-release warning:** `v1.1.1-pre.1` is experimental. It has passed source-level Lua parsing and focused static checks, but has not been tested in a live MacroQuest/EverQuest session. Verify behavior on a safe character before relying on it.
+> **Pre-release warning:** `v1.10.0` is experimental. Core casting, the rebuff break and Box Hub gathering have been exercised in a live session by the author; the newer roster recommendation, audience profiles and 15-40 limit have only passed source-level Lua parsing. Verify on a safe character before relying on it.
+
+## Features
+
+- **Recommended roster:** a confirmation dialog proposes buffs the caster can use at their current level, that someone in the group wants, and that stack with each other. Slots cover melee, defense, resist, mana and spell-haste effects first, then fill by level. The limit is 15 (recommended), adjustable to 40.
+- **Who gets which buffs:** per-member profiles (Auto (recommended), Pure melee, Hybrid, Caster / healer, Everything, Custom) with per-category checkboxes. Auto reads each character's classes, so a pure-melee tank is not asked to hold INT/WIS, mana regen or spell haste.
+- **Self-only vs group:** self-only buffs are cast once and again only if they fall off; group buffs are tracked on every living member.
+- **Rebuff break:** when a roster buff is missing, TAC's pulls pause, the caster meds if low, and (with Box Hub) other boxes are paused and sent to the caster to get in range, then resumed afterward. No rebuff break starts while a named NPC is engaged.
+- **Buffs button:** a dedicated **Buffs** button in the TAC header opens the roster without going through Settings.
+- **Scribed-spell cache:** a per-character file avoids rescanning the spellbook; it refreshes every 15 minutes, on demand, or when a new spell is scribed.
+- **Verbose debug log:** optional log at `<MacroQuest>\logs\triune_long_buffs_<character>.log`.
+- **Standalone mode:** `long_buffs_standalone.lua` runs the same roster with its own window when TAC is not running.
 
 ## Requirements
 
@@ -12,31 +23,33 @@ The plugin discovers eligible scribed class spells and trained class AAs across 
 - Triune AutoCombat with a compatible plugin manager, spell/AA catalog, and downtime-buff integration.
 - Project Triune character data. The suggested roster is only as complete as the class spell/AA data supplied by the installed TAC build.
 
-This is **not a standalone MacroQuest script**. Installing this file does not install TAC, MacroQuest, class data, or TAC's core downtime integration. A TAC build without the corresponding `long_buffs` integration may load no plugin UI or may not perform automatic casts.
+The plugin needs TAC's plugin manager plus a small core hook in `triune.lua` (`runtime.nextLongBuffCast` in the downtime-buff path). Those hooks are not in upstream TAC yet; a pull request is open for them (see the repository description). Without the hooks the standalone script still works.
 
 ## Install
 
 1. Install and start a compatible Triune AutoCombat build first.
-2. Copy `lua/tac/long_buffs.lua` from this repository into the matching MacroQuest folder:
+2. Copy these files into the matching MacroQuest folders:
 
    ```text
-   <MacroQuest folder>\lua\tac\long_buffs.lua
+   lua/tac/long_buffs.lua             ->  <MacroQuest>\lua\tac\long_buffs.lua
+   lua/tac/long_buffs_standalone.lua  ->  <MacroQuest>\lua\tac\long_buffs_standalone.lua
+   lua/tac_long_buffs_store.lua       ->  <MacroQuest>\lua\tac_long_buffs_store.lua
    ```
 
-3. Use the same TAC version/build as the plugin integration. Restart or reload TAC using that build's supported procedure.
-4. Open **Settings → Plugins → Long-Duration Buffs**.
+3. Restart or reload TAC. Use the **Buffs** button in the TAC header (or **Settings → Plugins → Long-Duration Buffs**).
+4. To use it without TAC, run `/lua run tac/long_buffs_standalone`.
 
-Do not overwrite your TAC installation with files from this standalone repository; it only contains the plugin and its documentation.
+Do not overwrite your TAC installation with files from this repository; it only contains the plugin files and documentation.
 
 ## Build and review a roster
 
-1. Open **Settings → Plugins → Long-Duration Buffs**.
-2. Choose **Build suggested roster (up to 15)**. The scan considers known class buffs, the character's level and three classes, spells in the spellbook, trained AAs, duration, and available spell-stacking information.
-3. Review the proposed spell, source, duration, and target scope in the confirmation window.
-4. Uncheck any entries you do not want, then choose **Add selected buffs**. Choosing **Cancel** leaves the roster unchanged.
-5. Change single-target spell scope to **Self only** or **Self + Group** in the roster. Use **Add Another Eligible Buff** to add more entries individually, or **Remove** to delete one.
+1. Open the **Buffs** window. A character with no roster is offered a recommended one automatically (this can be turned off).
+2. Or choose **Build suggested roster**. The scan uses the caster's level (spells above your level are skipped even if scribed), the three classes, the spellbook, trained AAs, duration, who in the group wants each effect, and Spell stacking checks against everything already chosen.
+3. Review the proposed buffs, uncheck any you do not want, then choose **Add selected buffs**. **Cancel** leaves the roster unchanged.
+4. Set **Self only** or **Self + Group** per single-target buff, add or remove entries, and adjust the **Buff limit** slider (15 recommended, max 40).
+5. Under **Who gets which buffs**, leave each member on **Auto (recommended)** or pick a profile / tick categories.
 
-The generated list is limited to 15 entries; manual additions can take the saved roster beyond that limit. The recommendation is a heuristic, not a guarantee of the best possible server-specific buff. Unknown pairwise stacking comparisons are disclosed in the review window. Live checks still gate casting.
+The recommendation is a heuristic, not a guarantee of the best possible server-specific buff. Unknown pairwise stacking results are disclosed in the review window, and live checks still gate casting.
 
 ## Casting behavior and safety
 
@@ -52,7 +65,7 @@ The plugin checks the saved roster and only schedules a cast when the buff is ex
 - **Single-target effects** can be checked on the player only or on the player and current group members.
 - **Group spells** are tracked across the current group, including the player, and can be scheduled when an in-range member is missing the effect.
 
-This version does not add med-break rebuffing, nor does it guarantee that every spell/AA in the server's database is represented.
+In combat, only already-memorized spells are cast, and nothing is cast while a named NPC is engaged. The rebuff break is limited to 240 seconds, tries each target at most 3 times, and backs off for 10 minutes after a timeout. Gathering the group needs Box Hub on every box with remote commands enabled; without it the caster walks to out-of-range members instead. This version does not guarantee that every spell/AA in the server's database is represented.
 
 ## Commands
 
@@ -61,25 +74,28 @@ This version does not add med-break rebuffing, nor does it guarantee that every 
 /ac longbuff off      Disable automatic long-buff casting
 /ac longbuff toggle   Toggle automatic long-buff casting
 /ac longbuff scan     Re-scan eligible spells and trained AAs (requires long buffs enabled)
+/ac longbuff debug    Toggle the verbose debug log
+/longbuff ...         Same commands for the standalone script
 ```
 
 `/ac autobuff` is an alias for `/ac longbuff`.
 
 ## Settings and persistence
 
-The enable state, minimum duration, roster entries, and single-target scopes are saved with the TAC loadout. Keep a backup of your TAC settings before testing prerelease builds.
+The roster, minimum duration, buff limit, per-member profiles and the scribed-spell cache are saved per character in `<MacroQuest>\config\triune_long_buffs_<server>_<character>.lua`, shared by TAC and the standalone script. Other options (casting on/off, rebuff break, Box Hub gathering, debug log) are saved with the TAC loadout. Keep a backup of your TAC settings before testing prerelease builds.
 
 ## Troubleshooting
 
 - **No suggestions:** confirm TAC detected your three classes, has the relevant class catalog data, and the spells are scribed or AAs trained. Wait for the spellbook scan to finish before generating again.
 - **An unmemorized spell cannot be cast:** TAC needs a usable primary gem slot for its temporary gem swap. The plugin reports when it cannot find one.
+- **Need more detail:** turn on **Verbose debug log** and read `<MacroQuest>\logs\triune_long_buffs_<character>.log` (`GATE`, `BREAK`, `GATHER`, `AUDIENCE`, `SUGGEST` lines explain each decision).
 - **No casts occur:** confirm the roster is non-empty, plugin casting is enabled, TAC is running, and the main Downtime Buffs control is enabled. Check that the character is not in combat, moving, or in a med break.
 - **A spell is skipped:** incompatible/unknown stacking results, missing targets, unavailable spells/AAs, and active effects can all prevent a cast. The plugin fails closed on unknown live buff state.
 - **Unexpected targeting or server-specific behavior:** stop automatic casting and report the TAC/MacroQuest versions, character class combination, spell name, and relevant log output. Test with one roster entry first.
 
 ## Versioning
 
-The plugin's `version` field and GitHub tags use semantic-version-style values. This preview is `1.1.1-pre.1`; prerelease identifiers sort before the corresponding stable release. See [CHANGELOG.md](CHANGELOG.md) for the recorded changes.
+The plugin's `version` field and GitHub tags use semantic-version-style values. This preview is `1.10.0`; prerelease identifiers sort before the corresponding stable release. See [CHANGELOG.md](CHANGELOG.md) for the recorded changes.
 
 ## Attribution and licensing
 
